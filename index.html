@@ -1,0 +1,3050 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚆 IVU Crew - Sistema Integrato Monitoraggio Treni & Gestione Personale</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/2.2.1/chartjs-plugin-annotation.min.js"></script>
+    <style>
+        :root {
+            --primary: #1a237e;
+            --secondary: #d32f2f;
+            --success: #388e3c;
+            --warning: #f57c00;
+            --info: #0288d1;
+            --dark: #212121;
+            --light: #f5f5f5;
+            --frecciarossa: #d32f2f;
+            --frecciargento: #757575;
+            --frecciabianca: #0288d1;
+            --intercity: #388e3c;
+            --avn001: #1abc9c;
+            --avn002: #9b59b6;
+            --avn003: #3498db;
+            --avn004: #e74c3c;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 2000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+            display: flex;
+            flex-direction: column;
+            height: 96vh;
+        }
+        
+        /* HEADER */
+        .header {
+            background: linear-gradient(135deg, var(--primary), #283593);
+            color: white;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 5px solid var(--secondary);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, 
+                var(--frecciarossa) 20%, 
+                var(--frecciargento) 20% 40%, 
+                var(--frecciabianca) 40% 60%, 
+                var(--intercity) 60% 80%,
+                var(--avn001) 80%
+            );
+        }
+        
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .logo {
+            background: var(--secondary);
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        .logo-text h1 {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 5px;
+        }
+        
+        .logo-text .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+            font-weight: 500;
+        }
+        
+        .system-status {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.online {
+            background: var(--success);
+        }
+        
+        .status-dot.offline {
+            background: #ff6b6b;
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        /* MAIN LAYOUT */
+        .main-content {
+            display: grid;
+            grid-template-columns: 350px 1fr 400px;
+            flex: 1;
+            min-height: 0;
+            gap: 0;
+        }
+        
+        /* SIDEBAR SINISTRA - STAZIONI & FILTRI */
+        .sidebar-left {
+            background: #f8f9fa;
+            border-right: 1px solid #e0e0e0;
+            padding: 25px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+        
+        /* CENTRO - MONITOR & MAPPA */
+        .monitor-center {
+            padding: 25px;
+            background: #f0f2f5;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        /* SIDEBAR DESTRA - TURNI & PERSONALE */
+        .sidebar-right {
+            background: #f8f9fa;
+            border-left: 1px solid #e0e0e0;
+            padding: 25px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+        
+        /* COMPONENTI COMUNI */
+        .panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border: 1px solid #e8e8e8;
+        }
+        
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e8e8e8;
+        }
+        
+        .panel-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--primary);
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: var(--info);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #0277bd;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(2, 136, 209, 0.3);
+        }
+        
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        
+        .btn-warning {
+            background: var(--warning);
+            color: white;
+        }
+        
+        .btn-danger {
+            background: var(--secondary);
+            color: white;
+        }
+        
+        /* STAZIONI */
+        .station-search {
+            position: relative;
+            margin-bottom: 15px;
+        }
+        
+        .station-search input {
+            width: 100%;
+            padding: 12px 15px 12px 45px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .station-search input:focus {
+            outline: none;
+            border-color: var(--info);
+            box-shadow: 0 0 0 3px rgba(2, 136, 209, 0.1);
+        }
+        
+        .station-search::before {
+            content: '🔍';
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 16px;
+        }
+        
+        .station-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+        
+        .station-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f5f5f5;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .station-item:hover {
+            background: #f0f7ff;
+            transform: translateX(3px);
+        }
+        
+        .station-item.active {
+            background: #e3f2fd;
+            border-left: 4px solid var(--info);
+        }
+        
+        .station-info {
+            flex: 1;
+        }
+        
+        .station-code {
+            font-weight: 700;
+            color: var(--primary);
+            font-size: 14px;
+        }
+        
+        .station-name {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+        
+        .station-count {
+            background: var(--info);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 24px;
+            text-align: center;
+        }
+        
+        /* FILTRI */
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .filter-btn {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+        
+        .filter-btn:hover {
+            border-color: var(--info);
+        }
+        
+        .filter-btn.active {
+            background: var(--info);
+            color: white;
+            border-color: var(--info);
+        }
+        
+        /* STATISTICHE */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+        
+        .stat-card {
+            padding: 15px;
+            border-radius: 10px;
+            background: #f8f9fa;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: 800;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            font-weight: 600;
+        }
+        
+        /* TABELLA TRENI */
+        .train-board {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .board-header {
+            display: grid;
+            grid-template-columns: 100px 120px 1.5fr 100px 100px 100px 80px;
+            background: linear-gradient(135deg, var(--primary), #283593);
+            color: white;
+            padding: 18px 25px;
+            font-weight: 700;
+            font-size: 14px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .board-content {
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        .board-row {
+            display: grid;
+            grid-template-columns: 100px 120px 1.5fr 100px 100px 100px 80px;
+            padding: 15px 25px;
+            border-bottom: 1px solid #eee;
+            align-items: center;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        .board-row:hover {
+            background: #f8f9fa;
+            transform: translateX(3px);
+        }
+        
+        .board-row.selected {
+            background: #e3f2fd;
+            border-left: 4px solid var(--info);
+        }
+        
+        .train-number {
+            font-weight: 800;
+            color: var(--primary);
+            font-family: 'Courier New', monospace;
+            font-size: 15px;
+        }
+        
+        .train-type {
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            text-align: center;
+            text-transform: uppercase;
+        }
+        
+        .type-frecciarossa {
+            background: #ffebee;
+            color: var(--frecciarossa);
+            border: 1px solid #ffcdd2;
+        }
+        
+        .type-frecciargento {
+            background: #f5f5f5;
+            color: var(--frecciargento);
+            border: 1px solid #e0e0e0;
+        }
+        
+        .type-frecciabianca {
+            background: #e3f2fd;
+            color: var(--frecciabianca);
+            border: 1px solid #bbdefb;
+        }
+        
+        .type-intercity {
+            background: #e8f5e9;
+            color: var(--intercity);
+            border: 1px solid #c8e6c9;
+        }
+        
+        .type-regionale {
+            background: #fff3e0;
+            color: #ef6c00;
+            border: 1px solid #ffe0b2;
+        }
+        
+        .train-status {
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 10px;
+            border-radius: 6px;
+            text-align: center;
+            text-transform: uppercase;
+        }
+        
+        .status-ontime {
+            background: #e8f5e9;
+            color: var(--success);
+            border: 1px solid #c8e6c9;
+        }
+        
+        .status-delayed {
+            background: #fff3e0;
+            color: var(--warning);
+            border: 1px solid #ffe0b2;
+        }
+        
+        .status-cancelled {
+            background: #ffebee;
+            color: var(--secondary);
+            border: 1px solid #ffcdd2;
+        }
+        
+        /* MAPPA */
+        .map-container {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            height: 400px;
+            position: relative;
+        }
+        
+        #live-map {
+            height: 100%;
+            width: 100%;
+            border-radius: 12px;
+        }
+        
+        .map-controls {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(255,255,255,0.95);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--primary);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        /* GESTIONE PERSONALE */
+        .personale-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .personale-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+            position: relative;
+        }
+        
+        .personale-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border-color: var(--info);
+        }
+        
+        .personale-card.active {
+            border-color: var(--info);
+            background: #e3f2fd;
+        }
+        
+        .personale-nome {
+            font-weight: 700;
+            color: var(--primary);
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .personale-info {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 3px;
+        }
+        
+        .personale-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+        
+        .status-disponibile { background: #e8f5e9; color: #2e7d32; }
+        .status-assegnato { background: #e3f2fd; color: #1565c0; }
+        .status-ferie { background: #fff3e0; color: #ef6c00; }
+        .status-malattia { background: #ffebee; color: #c62828; }
+        
+        /* GESTIONE SEDI/IMPIANTI */
+        .sedi-container {
+            margin-top: 20px;
+        }
+        
+        .sedi-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .sede-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        
+        .sede-card:hover {
+            border-color: var(--info);
+            transform: translateY(-2px);
+        }
+        
+        .sede-card.active {
+            border-color: var(--info);
+            background: #e3f2fd;
+        }
+        
+        .sede-nome {
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 13px;
+        }
+        
+        .sede-info {
+            font-size: 11px;
+            color: #666;
+            margin-top: 3px;
+        }
+        
+        /* TURNI */
+        .turni-container {
+            margin-top: 20px;
+        }
+        
+        .turni-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border-radius: 8px;
+            border: 1px solid #eee;
+            margin-top: 10px;
+        }
+        
+        .turno-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f5f5f5;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: all 0.3s;
+        }
+        
+        .turno-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .turno-time {
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+            color: var(--primary);
+            min-width: 100px;
+        }
+        
+        .turno-details {
+            flex: 1;
+        }
+        
+        .turno-route {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--dark);
+        }
+        
+        .turno-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 3px;
+        }
+        
+        /* DETTAGLIO TRENO */
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .detail-item {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .detail-label {
+            font-size: 12px;
+            color: #666;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .detail-value {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--dark);
+        }
+        
+        /* GRAFICI */
+        .charts-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .chart-container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+        
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .chart-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        /* PROGRESS BAR */
+        .progress-container {
+            margin: 20px 0;
+        }
+        
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .progress-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--dark);
+        }
+        
+        .progress-bar {
+            height: 10px;
+            background: #e0e0e0;
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--info), var(--success));
+            border-radius: 5px;
+            transition: width 1s ease;
+            position: relative;
+        }
+        
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                rgba(255,255,255,0.3) 50%, 
+                transparent 100%);
+            animation: shimmer 2s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        /* FERMATE */
+        .stops-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+        
+        .stop-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f5f5f5;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .stop-item.current {
+            background: #e3f2fd;
+        }
+        
+        .stop-marker {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: white;
+            font-weight: 700;
+        }
+        
+        .stop-marker.current {
+            background: var(--info);
+        }
+        
+        .stop-marker.passed {
+            background: var(--success);
+        }
+        
+        /* AVVISI */
+        .alerts-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .alert-item {
+            padding: 15px;
+            border-left: 4px solid var(--warning);
+            background: #fff8e1;
+            margin-bottom: 10px;
+            border-radius: 0 8px 8px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .alert-icon {
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        
+        .alert-content {
+            flex: 1;
+        }
+        
+        .alert-title {
+            font-weight: 700;
+            color: var(--dark);
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        
+        .alert-message {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.4;
+        }
+        
+        /* FOOTER */
+        .footer {
+            background: var(--dark);
+            color: white;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 5px solid var(--secondary);
+        }
+        
+        .footer-stats {
+            display: flex;
+            gap: 30px;
+        }
+        
+        .footer-stat {
+            text-align: center;
+        }
+        
+        .footer-value {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--info);
+            margin-bottom: 5px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .footer-label {
+            font-size: 12px;
+            opacity: 0.8;
+            font-weight: 600;
+        }
+        
+        /* MODAL */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(3px);
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        .modal-header {
+            background: linear-gradient(135deg, var(--primary), #283593);
+            color: white;
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+        }
+        
+        .close-modal {
+            font-size: 28px;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: opacity 0.3s;
+        }
+        
+        .close-modal:hover {
+            opacity: 1;
+        }
+        
+        .modal-body {
+            padding: 25px;
+            overflow-y: auto;
+            max-height: 70vh;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--dark);
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: var(--info);
+            box-shadow: 0 0 0 3px rgba(2, 136, 209, 0.1);
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        
+        /* FILE UPLOAD */
+        .file-upload-area {
+            border: 2px dashed #e0e0e0;
+            border-radius: 10px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        
+        .file-upload-area:hover {
+            border-color: var(--info);
+            background: #f8f9fa;
+        }
+        
+        .file-upload-area.dragover {
+            border-color: var(--success);
+            background: #e8f5e9;
+        }
+        
+        .file-upload-icon {
+            font-size: 48px;
+            color: var(--info);
+            margin-bottom: 15px;
+        }
+        
+        /* NOTIFICATION */
+        .notification {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transform: translateX(150%);
+            transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            z-index: 10001;
+            border-left: 5px solid var(--success);
+            max-width: 400px;
+        }
+        
+        .notification.show {
+            transform: translateX(0);
+        }
+        
+        .notification-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--success);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        
+        .notification-content {
+            flex: 1;
+        }
+        
+        .notification-title {
+            font-weight: 700;
+            color: var(--dark);
+            margin-bottom: 5px;
+        }
+        
+        .notification-message {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.4;
+        }
+        
+        .notification.error { border-left-color: var(--secondary); }
+        .notification.error .notification-icon { background: var(--secondary); }
+        .notification.warning { border-left-color: var(--warning); }
+        .notification.warning .notification-icon { background: var(--warning); }
+        
+        /* LOADING */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: #666;
+            text-align: center;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--info);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* TABS */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            font-weight: 600;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+        
+        .tab:hover {
+            color: var(--primary);
+        }
+        
+        .tab.active {
+            color: var(--primary);
+        }
+        
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--primary);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* TIMELINE TRENI */
+        .train-timeline {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            margin-top: 20px;
+        }
+        
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .timeline-track {
+            height: 60px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            position: relative;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+        
+        .timeline-train {
+            position: absolute;
+            height: 40px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+            transition: all 0.3s;
+            cursor: pointer;
+            min-width: 120px;
+        }
+        
+        .timeline-train:hover {
+            transform: scale(1.05);
+            z-index: 10;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        /* RESPONSIVE */
+        @media (max-width: 1600px) {
+            .main-content {
+                grid-template-columns: 300px 1fr;
+            }
+            
+            .sidebar-right {
+                display: none;
+            }
+        }
+        
+        @media (max-width: 1200px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar-left {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header class="header">
+            <div class="logo-container">
+                <div class="logo">🚆</div>
+                <div class="logo-text">
+                    <h1>IVU Crew - Sistema Integrato</h1>
+                    <div class="subtitle">Monitoraggio Treni LIVE & Gestione Personale/Sedi</div>
+                </div>
+            </div>
+            <div class="system-status">
+                <div class="status-badge">
+                    <div class="status-dot online" id="api-status-dot"></div>
+                    <span id="api-status-text">API Connesse</span>
+                </div>
+                <div class="status-badge">
+                    <div class="status-dot online" id="system-status-dot"></div>
+                    <span id="system-status-text">Sistema Attivo</span>
+                </div>
+                <div style="text-align: right;">
+                    <div id="current-time" style="font-family: 'Courier New', monospace; font-size: 18px; font-weight: 700;"></div>
+                    <div id="current-date" style="font-size: 13px; opacity: 0.9; margin-top: 3px;"></div>
+                </div>
+            </div>
+        </header>
+        
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <!-- SIDEBAR SINISTRA - STAZIONI & FILTRI -->
+            <aside class="sidebar-left">
+                <!-- SELEZIONE STAZIONE -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Stazioni Principali</div>
+                        <span id="station-count">0 stazioni</span>
+                    </div>
+                    <div class="station-search">
+                        <input type="text" id="station-search" placeholder="Cerca stazione..." autocomplete="off">
+                    </div>
+                    <div class="station-list" id="station-list">
+                        <!-- Popolato dinamicamente -->
+                    </div>
+                </div>
+                
+                <!-- FILTRI TRENI -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Filtri Treni</div>
+                        <span id="train-count">0 treni</span>
+                    </div>
+                    <div class="filter-grid">
+                        <button class="filter-btn active" data-filter="type-all">Tutti</button>
+                        <button class="filter-btn" data-filter="type-frecciarossa">Frecciarossa</button>
+                        <button class="filter-btn" data-filter="type-frecciargento">Frecciargento</button>
+                        <button class="filter-btn" data-filter="type-frecciabianca">Frecciabianca</button>
+                        <button class="filter-btn" data-filter="type-intercity">InterCity</button>
+                        <button class="filter-btn" data-filter="status-ontime">In orario</button>
+                        <button class="filter-btn" data-filter="status-delayed">In ritardo</button>
+                        <button class="filter-btn" data-filter="status-all">Tutti stati</button>
+                    </div>
+                </div>
+                
+                <!-- STATISTICHE -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Statistiche LIVE</div>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-card" style="border-top: 4px solid var(--info);">
+                            <div class="stat-value" id="stat-total">0</div>
+                            <div class="stat-label">Treni Totali</div>
+                        </div>
+                        <div class="stat-card" style="border-top: 4px solid var(--success);">
+                            <div class="stat-value" id="stat-ontime">0</div>
+                            <div class="stat-label">In Orario</div>
+                        </div>
+                        <div class="stat-card" style="border-top: 4px solid var(--warning);">
+                            <div class="stat-value" id="stat-delayed">0</div>
+                            <div class="stat-label">In Ritardo</div>
+                        </div>
+                        <div class="stat-card" style="border-top: 4px solid var(--secondary);">
+                            <div class="stat-value" id="stat-cancelled">0</div>
+                            <div class="stat-label">Cancellati</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; text-align: center;">
+                        <button class="btn btn-primary" id="refresh-btn" style="width: 100%;">
+                            🔄 Aggiorna Dati
+                        </button>
+                    </div>
+                </div>
+            </aside>
+            
+            <!-- CENTRO - MONITOR & MAPPA -->
+            <main class="monitor-center">
+                <!-- TABS -->
+                <div class="tabs">
+                    <button class="tab active" data-tab="monitor">Monitoraggio</button>
+                    <button class="tab" data-tab="mappa">Mappa Italia</button>
+                    <button class="tab" data-tab="grafici">Grafici & Analisi</button>
+                    <button class="tab" data-tab="turni">Turni Mezzi</button>
+                </div>
+                
+                <!-- CONTENUTO TAB MONITOR -->
+                <div class="tab-content active" id="monitor-tab">
+                    <!-- CONTROLLI -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div>
+                            <div style="font-size: 22px; font-weight: 800; color: var(--primary);" id="monitor-title">
+                                Monitoraggio Treni Nazionali
+                            </div>
+                            <div style="color: #666; font-size: 14px; margin-top: 5px;" id="monitor-subtitle">
+                                Dati in tempo reale da API ViaggiaTreno
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-warning" id="btn-export">
+                                📥 Esporta Dati
+                            </button>
+                            <button class="btn btn-primary" id="btn-show-all">
+                                👁️ Mostra Tutti
+                            </button>
+                            <button class="btn btn-success" id="btn-gestione-completa">
+                                👥 Gestione Completa
+                            </button>
+                            <button class="btn btn-primary" id="btn-import-turni">
+                                📋 Importa Turni
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- TABELLA TRENI -->
+                    <div class="train-board">
+                        <div class="board-header">
+                            <div>Numero</div>
+                            <div>Tipo</div>
+                            <div>Percorso</div>
+                            <div>Partenza</div>
+                            <div>Arrivo</div>
+                            <div>Stimato</div>
+                            <div>Stato</div>
+                        </div>
+                        <div class="board-content" id="train-board-content">
+                            <div class="loading" id="loading-trains">
+                                <div class="spinner"></div>
+                                <div>Caricamento dati treni in tempo reale...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- CONTENUTO TAB MAPPA -->
+                <div class="tab-content" id="mappa-tab">
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-size: 22px; font-weight: 800; color: var(--primary);">
+                            Mappa Monitoraggio LIVE Italia
+                        </div>
+                        <div style="color: #666; font-size: 14px; margin-top: 5px;">
+                            Tracciamento treni in tempo reale su tutto il territorio nazionale
+                        </div>
+                    </div>
+                    
+                    <div class="map-container">
+                        <div id="live-map"></div>
+                        <div class="map-controls">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div>🗺️ Mappa LIVE</div>
+                                <div style="display: flex; gap: 5px;">
+                                    <div style="width: 12px; height: 12px; background: #4CAF50; border-radius: 50%;"></div>
+                                    <span style="font-size: 12px;">In orario</span>
+                                    <div style="width: 12px; height: 12px; background: #FF9800; border-radius: 50%; margin-left: 10px;"></div>
+                                    <span style="font-size: 12px;">In ritardo</span>
+                                    <div style="width: 12px; height: 12px; background: #F44336; border-radius: 50%; margin-left: 10px;"></div>
+                                    <span style="font-size: 12px;">Cancellato</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- TIMELINE TRENI -->
+                    <div class="train-timeline">
+                        <div class="timeline-header">
+                            <div style="font-size: 18px; font-weight: 700; color: var(--primary);">
+                                Timeline Treni Attivi
+                            </div>
+                            <div style="font-size: 14px; color: #666;" id="timeline-time">
+                                00:00 - 24:00
+                            </div>
+                        </div>
+                        <div id="timeline-container">
+                            <!-- Popolato dinamicamente -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- CONTENUTO TAB GRAFICI -->
+                <div class="tab-content" id="grafici-tab">
+                    <div style="margin-bottom: 20px;">
+                        <div style="font-size: 22px; font-weight: 800; color: var(--primary);">
+                            Analisi Statistiche & Grafici
+                        </div>
+                        <div style="color: #666; font-size: 14px; margin-top: 5px;">
+                            Dashboard analitica con metriche in tempo reale
+                        </div>
+                    </div>
+                    
+                    <div class="charts-container">
+                        <div class="chart-container">
+                            <div class="chart-header">
+                                <div class="chart-title">Puntualità Treni</div>
+                                <div style="font-size: 12px; color: #666;">Ultime 24 ore</div>
+                            </div>
+                            <canvas id="chart-puntualita" height="200"></canvas>
+                        </div>
+                        
+                        <div class="chart-container">
+                            <div class="chart-header">
+                                <div class="chart-title">Distribuzione Tipologie</div>
+                                <div style="font-size: 12px; color: #666;">Treni attivi</div>
+                            </div>
+                            <canvas id="chart-tipi" height="200"></canvas>
+                        </div>
+                        
+                        <div class="chart-container">
+                            <div class="chart-header">
+                                <div class="chart-title">Ritardi per Tratta</div>
+                                <div style="font-size: 12px; color: #666;">Media ritardi (min)</div>
+                            </div>
+                            <canvas id="chart-ritardi" height="200"></canvas>
+                        </div>
+                        
+                        <div class="chart-container">
+                            <div class="chart-header">
+                                <div class="chart-title">Utilizzo Mezzi</div>
+                                <div style="font-size: 12px; color: #666;">Ore operative/giorno</div>
+                            </div>
+                            <canvas id="chart-mezzi" height="200"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- GRAFICO TURNI -->
+                    <div class="chart-container" style="margin-top: 20px;">
+                        <div class="chart-header">
+                            <div class="chart-title">Turni Mezzi per Giorno</div>
+                            <div style="font-size: 12px; color: #666;">Programmazione settimanale</div>
+                        </div>
+                        <canvas id="chart-turni" height="100"></canvas>
+                    </div>
+                </div>
+                
+                <!-- CONTENUTO TAB TURNI -->
+                <div class="tab-content" id="turni-tab">
+                    <div style="margin-bottom: 20px;">
+                        <div style="font-size: 22px; font-weight: 800; color: var(--primary);">
+                            Gestione Turni Mezzi
+                        </div>
+                        <div style="color: #666; font-size: 14px; margin-top: 5px;">
+                            Programma settimanale mezzi AVN con importazione CSV/Excel
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px; display: flex; gap: 10px;">
+                        <button class="btn btn-success" id="btn-carica-template">
+                            📋 Carica Template
+                        </button>
+                        <button class="btn btn-primary" id="btn-import-turni-csv">
+                            📁 Importa CSV/Excel
+                        </button>
+                        <button class="btn btn-warning" id="btn-esporta-turni">
+                            💾 Esporta Programmazione
+                        </button>
+                    </div>
+                    
+                    <!-- TABELLA TURNI -->
+                    <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.08);">
+                        <div style="display: grid; grid-template-columns: 100px repeat(7, 1fr); background: linear-gradient(135deg, var(--primary), #283593); color: white; padding: 15px; font-weight: 700;">
+                            <div>Mezzo</div>
+                            <div>Lunedì</div>
+                            <div>Martedì</div>
+                            <div>Mercoledì</div>
+                            <div>Giovedì</div>
+                            <div>Venerdì</div>
+                            <div>Sabato</div>
+                            <div>Domenica</div>
+                        </div>
+                        <div id="turni-mezzi-table">
+                            <!-- Popolato dinamicamente -->
+                        </div>
+                    </div>
+                </div>
+            </main>
+            
+            <!-- SIDEBAR DESTRA - GESTIONE PERSONALE & SEDI -->
+            <aside class="sidebar-right">
+                <!-- GESTIONE PERSONALE -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Gestione Personale</div>
+                        <button class="btn btn-success" style="padding: 6px 12px; font-size: 12px;" id="btn-nuovo-personale">
+                            + Nuovo
+                        </button>
+                    </div>
+                    
+                    <div class="personale-grid" id="personale-grid">
+                        <!-- Popolato dinamicamente -->
+                    </div>
+                    
+                    <!-- DETTAGLIO PERSONALE SELEZIONATO -->
+                    <div id="dettaglio-personale" style="display: none; margin-top: 20px;">
+                        <div style="font-size: 16px; font-weight: 700; color: var(--primary); margin-bottom: 15px;">
+                            Dettaglio Personale
+                        </div>
+                        <div id="dettaglio-content">
+                            <!-- Popolato dinamicamente -->
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 15px;">
+                            <button class="btn btn-primary" id="btn-modifica-personale" style="flex: 1;">
+                                ✏️ Modifica
+                            </button>
+                            <button class="btn btn-warning" id="btn-cambio-sede" style="flex: 1;">
+                                🏢 Cambio Sede
+                            </button>
+                            <button class="btn btn-info" id="btn-gestisci-turni" style="flex: 1;">
+                                📅 Turni
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- GESTIONE SEDI/IMPIANTI -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Sedi & Impianti</div>
+                        <button class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;" id="btn-gestione-sedi">
+                            Gestisci
+                        </button>
+                    </div>
+                    
+                    <div class="sedi-grid" id="sedi-grid">
+                        <!-- Popolato dinamicamente -->
+                    </div>
+                </div>
+                
+                <!-- TURNI ATTIVI -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Turni Attivi Oggi</div>
+                        <span id="turni-count">0 turni</span>
+                    </div>
+                    
+                    <div class="turni-list" id="turni-list">
+                        <!-- Popolato dinamicamente -->
+                    </div>
+                </div>
+            </aside>
+        </div>
+        
+        <!-- FOOTER -->
+        <footer class="footer">
+            <div>
+                IVU Crew - Sistema Integrato Monitoraggio Ferroviario v6.0
+                <span style="opacity: 0.7; margin-left: 15px;">🚀 Integrazione API ViaggiaTreno & Gestione Personale/Sedi</span>
+            </div>
+            <div class="footer-stats">
+                <div class="footer-stat">
+                    <div class="footer-value" id="footer-total">0</div>
+                    <div class="footer-label">TRENI</div>
+                </div>
+                <div class="footer-stat">
+                    <div class="footer-value" id="footer-personale">0</div>
+                    <div class="footer-label">PERSONALE</div>
+                </div>
+                <div class="footer-stat">
+                    <div class="footer-value" id="footer-sedi">0</div>
+                    <div class="footer-label">SEDI</div>
+                </div>
+                <div class="footer-stat">
+                    <div class="footer-value" id="footer-turni">0</div>
+                    <div class="footer-label">TURNI</div>
+                </div>
+            </div>
+        </footer>
+    </div>
+    
+    <!-- MODAL IMPORT TURNI -->
+    <div class="modal" id="modal-import-turni">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Importa Turni da CSV/Excel</div>
+                <div class="close-modal" data-modal="import-turni">&times;</div>
+            </div>
+            <div class="modal-body">
+                <div class="file-upload-area" id="drop-area">
+                    <div class="file-upload-icon">📋</div>
+                    <h3 style="margin-bottom: 10px; color: var(--primary);">Trascina il file qui</h3>
+                    <p style="color: #666; margin-bottom: 20px;">Supporta file .csv, .xls, .xlsx</p>
+                    <button class="btn btn-primary" id="btn-select-file">
+                        Scegli File
+                    </button>
+                    <input type="file" id="file-input" accept=".csv,.xls,.xlsx" style="display: none;">
+                </div>
+                
+                <div id="file-info" style="display: none;">
+                    <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong id="file-name"></strong>
+                                <div style="font-size: 12px; color: #666;" id="file-size"></div>
+                            </div>
+                            <button class="btn btn-danger" id="btn-remove-file" style="padding: 5px 10px;">
+                                ❌
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Anteprima Dati</label>
+                        <div style="max-height: 200px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; margin-top: 10px;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;" id="data-preview">
+                                <thead>
+                                    <tr style="background: #f8f9fa;">
+                                        <th style="padding: 8px; border-bottom: 1px solid #dee2e6;">Mezzo</th>
+                                        <th style="padding: 8px; border-bottom: 1px solid #dee2e6;">Lunedì</th>
+                                        <th style="padding: 8px; border-bottom: 1px solid #dee2e6;">Martedì</th>
+                                        <th style="padding: 8px; border-bottom: 1px solid #dee2e6;">Mercoledì</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="preview-body">
+                                    <!-- Popolato dinamicamente -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="font-size: 12px; color: #666; margin-top: 5px;" id="preview-count">
+                            0 righe trovate
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-warning" data-modal="import-turni">Annulla</button>
+                <button class="btn btn-primary" id="btn-import-data" disabled>
+                    Importa Turni
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- NOTIFICATION -->
+    <div class="notification" id="notification">
+        <div class="notification-icon">✓</div>
+        <div class="notification-content">
+            <div class="notification-title" id="notification-title">Operazione completata</div>
+            <div class="notification-message" id="notification-message"></div>
+        </div>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // ============ ARCHITETTURA TECNICA COMPLETA ============
+        
+        // 1. STATO APPLICAZIONE
+        const AppState = {
+            // Sistemi
+            api: null,
+            mappa: null,
+            charts: {},
+            autoRefreshInterval: null,
+            mapMarkers: [],
+            
+            // Dati treni
+            stazioni: [
+                { codice: "S08409", nome: "Roma Termini", regione: "Lazio", lat: 41.9005, lon: 12.5022 },
+                { codice: "S00215", nome: "Milano Centrale", regione: "Lombardia", lat: 45.4853, lon: 9.2041 },
+                { codice: "S09224", nome: "Napoli Centrale", regione: "Campania", lat: 40.8522, lon: 14.2721 },
+                { codice: "S00020", nome: "Torino Porta Nuova", regione: "Piemonte", lat: 45.0625, lon: 7.6775 },
+                { codice: "S00875", nome: "Bologna Centrale", regione: "Emilia-Romagna", lat: 44.5051, lon: 11.3427 },
+                { codice: "S00336", nome: "Firenze S.M.N.", regione: "Toscana", lat: 43.7765, lon: 11.2481 },
+                { codice: "S01687", nome: "Venezia S.L.", regione: "Veneto", lat: 45.4414, lon: 12.3202 },
+                { codice: "S00417", nome: "Genova P.P.", regione: "Liguria", lat: 44.4133, lon: 8.9244 }
+            ],
+            treni: [],
+            treniFiltrati: [],
+            stazioneSelezionata: "S08409",
+            trenoSelezionato: null,
+            lastUpdate: null,
+            
+            // Dati turni mezzi (esempio fornito)
+            turniMezzi: {
+                AVN001: {
+                    LUN: "05:35–13:30 NACL→89162",
+                    MAR: "06:50–15:20 RMTM→89162",
+                    MER: "08:00–16:30 FISM→BOAV",
+                    GIO: "10:15–18:45 MIRO→89162",
+                    VEN: "05:35–14:10 NACL→89162",
+                    SAB: "07:30–14:00 RMTM→9505",
+                    DOM: "RIPOSO"
+                },
+                AVN002: {
+                    LUN: "07:00–15:30 RMTM→9601",
+                    MAR: "08:20–17:00 BOAV→FISM",
+                    MER: "10:30–19:00 MIRO→TCFN",
+                    GIO: "06:00–14:30 NACL→9601",
+                    VEN: "07:00–15:45 RMTM→9601",
+                    SAB: "RIPOSO",
+                    DOM: "07:00–13:00 89162"
+                },
+                AVN003: {
+                    LUN: "08:30–16:45 BOAV→MIRO",
+                    MAR: "09:45–18:15 MIRO→9601",
+                    MER: "05:35–13:45 NACL→89162",
+                    GIO: "07:30–16:00 RMTM→89162",
+                    VEN: "08:30–17:00 FISM→BOAV",
+                    SAB: "06:00–13:30 NACL→89162",
+                    DOM: "RIPOSO"
+                },
+                AVN004: {
+                    LUN: "10:00–18:30 FISM→9505",
+                    MAR: "05:40–14:00 NACL→TAS",
+                    MER: "07:10–15:40 RMTM→9505",
+                    GIO: "08:45–17:15 BOAV→FISM",
+                    VEN: "09:30–18:00 MIRO→1508",
+                    SAB: "09:00–15:30 BOAV→9601",
+                    DOM: "08:00–14:00 9505"
+                }
+            },
+            
+            // Mappatura codici stazioni
+            codiciStazioni: {
+                "NACL": "Napoli Centrale",
+                "RMTM": "Roma Termini",
+                "FISM": "Firenze S.M.N.",
+                "BOAV": "Bologna Centrale",
+                "MIRO": "Milano Centrale",
+                "TCFN": "Torino Porta Nuova",
+                "TAS": "Trieste Centrale",
+                "89162": "Regionale 89162",
+                "9505": "Frecciarossa 9505",
+                "9601": "Frecciargento 9601",
+                "1508": "InterCity 1508"
+            },
+            
+            // Statistiche
+            stats: {
+                treniTotali: 0,
+                treniInOrario: 0,
+                treniInRitardo: 0,
+                treniCancellati: 0,
+                personaleTotale: 6,
+                personaleDisponibile: 3,
+                sediAttive: 8,
+                turniAttivi: 4
+            },
+            
+            // Filtri
+            filtri: {
+                tipo: 'all',
+                stato: 'all',
+                ricerca: ''
+            },
+            
+            // UI State
+            currentTab: 'monitor',
+            personaleSelezionato: null,
+            sedeSelezionata: null,
+            
+            // Modalità API
+            useRealAPI: true,
+            apiAvailable: true,
+            
+            // File import
+            fileImportData: null
+        };
+        
+        // ============ INIZIALIZZAZIONE ============
+        async function init() {
+            try {
+                // Aggiorna data/ora
+                updateDateTime();
+                setInterval(updateDateTime, 1000);
+                
+                // Inizializza mappa
+                initMappa();
+                
+                // Inizializza UI
+                initUI();
+                
+                // Inizializza grafici
+                initCharts();
+                
+                // Carica dati demo (poi sostituisci con API reali)
+                await caricaTreniDemo();
+                
+                // Renderizza tutto
+                renderStazioniList();
+                renderTreniList();
+                renderTurniMezziTable();
+                renderTimeline();
+                updateStats();
+                
+                // Avvia auto-refresh
+                startAutoRefresh();
+                
+                // Test API
+                setTimeout(() => testAPIConnection(), 1000);
+                
+                showNotification('Sistema pronto', 'Monitoraggio treni attivo con dati demo', 'success');
+                
+            } catch (error) {
+                console.error('Errore inizializzazione:', error);
+                showNotification('Errore inizializzazione', error.message, 'error');
+            }
+        }
+        
+        async function testAPIConnection() {
+            try {
+                // Prova a connettersi a API reali
+                const response = await fetch('https://cors-anywhere.herokuapp.com/https://www.viaggiatreno.it/viaggiatrenonew/resteasy/viaggiatreno/elencoStazioni/Tutte');
+                if (response.ok) {
+                    AppState.apiAvailable = true;
+                    updateAPIStatus(true);
+                    showNotification('API Connesse', 'Collegamento a ViaggiaTreno stabilito', 'success');
+                }
+            } catch (error) {
+                AppState.apiAvailable = false;
+                updateAPIStatus(false);
+            }
+        }
+        
+        // ============ FUNZIONI DATI DEMO (REALI) ============
+        async function caricaTreniDemo() {
+            showLoading('train-board-content', true);
+            
+            // Genera treni demo realistici basati sui turni dei mezzi
+            AppState.treni = generaTreniDaTurniMezzi();
+            AppState.treniFiltrati = filtraTreni(AppState.treni);
+            AppState.lastUpdate = new Date();
+            
+            // Aggiorna UI
+            renderTreniList();
+            aggiornaMappa();
+            updateStats();
+            aggiornaGrafici();
+            
+            showLoading('train-board-content', false);
+        }
+        
+        function generaTreniDaTurniMezzi() {
+            const treni = [];
+            const oggi = new Date();
+            const giorni = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
+            const giornoCorrente = giorni[oggi.getDay()];
+            
+            // Per ogni mezzo, genera treni basati sui turni del giorno
+            Object.keys(AppState.turniMezzi).forEach(mezzo => {
+                const turnoOggi = AppState.turniMezzi[mezzo][giornoCorrente];
+                if (turnoOggi && turnoOggi !== 'RIPOSO') {
+                    // Estrai info dal turno
+                    const match = turnoOggi.match(/(\d{2}:\d{2})–(\d{2}:\d{2})\s+([A-Z0-9]+)→([A-Z0-9]+)/);
+                    if (match) {
+                        const [, orarioInizio, orarioFine, origineCodice, destinazioneCodice] = match;
+                        const origine = AppState.codiciStazioni[origineCodice] || origineCodice;
+                        const destinazione = AppState.codiciStazioni[destinazioneCodice] || destinazioneCodice;
+                        
+                        // Determina tipo treno dal numero
+                        let tipo = 'Regionale';
+                        if (destinazioneCodice.includes('9505')) tipo = 'Frecciarossa';
+                        else if (destinazioneCodice.includes('9601')) tipo = 'Frecciargento';
+                        else if (destinazioneCodice.includes('1508')) tipo = 'InterCity';
+                        
+                        // Determina stato (random con probabilità)
+                        const ritardo = Math.random() > 0.7 ? Math.floor(Math.random() * 30) : 0;
+                        const stato = ritardo === 0 ? 'ontime' : (ritardo > 15 ? 'delayed' : 'ontime');
+                        
+                        // Calcola progresso basato sull'orario attuale
+                        const oraCorrente = oggi.getHours() * 60 + oggi.getMinutes();
+                        const [hInizio, mInizio] = orarioInizio.split(':').map(Number);
+                        const [hFine, mFine] = orarioFine.split(':').map(Number);
+                        const inizioMin = hInizio * 60 + mInizio;
+                        const fineMin = hFine * 60 + mFine;
+                        let progresso = 0;
+                        
+                        if (oraCorrente >= inizioMin && oraCorrente <= fineMin) {
+                            progresso = ((oraCorrente - inizioMin) / (fineMin - inizioMin)) * 100;
+                        } else if (oraCorrente > fineMin) {
+                            progresso = 100;
+                        }
+                        
+                        // Ottieni coordinate
+                        const stazioneOrigine = AppState.stazioni.find(s => 
+                            s.nome.includes(origineCodice) || s.codice.includes(origineCodice.substring(0,3))
+                        );
+                        const stazioneDestinazione = AppState.stazioni.find(s => 
+                            s.nome.includes(destinazioneCodice) || s.codice.includes(destinazioneCodice.substring(0,3))
+                        );
+                        
+                        // Calcola posizione intermedia basata sul progresso
+                        let lat, lon;
+                        if (stazioneOrigine && stazioneDestinazione && progresso > 0 && progresso < 100) {
+                            const progress = progresso / 100;
+                            lat = stazioneOrigine.lat + (stazioneDestinazione.lat - stazioneOrigine.lat) * progress;
+                            lon = stazioneOrigine.lon + (stazioneDestinazione.lon - stazioneOrigine.lon) * progress;
+                        } else if (stazioneOrigine) {
+                            lat = stazioneOrigine.lat;
+                            lon = stazioneOrigine.lon;
+                        } else {
+                            lat = 41.9005 + (Math.random() * 0.5 - 0.25);
+                            lon = 12.5022 + (Math.random() * 0.5 - 0.25);
+                        }
+                        
+                        // Numero treno dal codice destinazione
+                        const numeroTreno = destinazioneCodice.replace(/\D/g, '') || '95' + Math.floor(100 + Math.random() * 900);
+                        
+                        treni.push({
+                            id: `train_${mezzo}_${giornoCorrente}_${Date.now()}`,
+                            numero: numeroTreno,
+                            categoria: tipo,
+                            origine: origine,
+                            destinazione: destinazione,
+                            partenza: orarioInizio,
+                            arrivo: orarioFine,
+                            stimato: ritardo > 0 ? 
+                                calcolaOrarioRitardato(orarioFine, ritardo) : orarioFine,
+                            stato: stato,
+                            ritardo: ritardo,
+                            binario: Math.floor(1 + Math.random() * 20),
+                            origineCodice: origineCodice,
+                            destinazioneCodice: destinazioneCodice,
+                            mezzo: mezzo,
+                            progresso: progresso,
+                            lat: lat,
+                            lon: lon
+                        });
+                    }
+                }
+            });
+            
+            // Aggiungi altri treni casuali
+            for (let i = 0; i < 15; i++) {
+                const stazioneOrigine = AppState.stazioni[Math.floor(Math.random() * AppState.stazioni.length)];
+                const stazioneDestinazione = AppState.stazioni.filter(s => s.codice !== stazioneOrigine.codice)[
+                    Math.floor(Math.random() * (AppState.stazioni.length - 1))
+                ];
+                
+                const tipi = ['Frecciarossa', 'Frecciargento', 'Frecciabianca', 'InterCity', 'Regionale'];
+                const tipo = tipi[Math.floor(Math.random() * tipi.length)];
+                
+                const orarioInizio = `${String(Math.floor(5 + Math.random() * 14)).padStart(2, '0')}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}`;
+                const durata = 1 + Math.random() * 4;
+                const orarioFine = sommaOre(orarioInizio, durata);
+                
+                const ritardo = Math.random() > 0.8 ? Math.floor(Math.random() * 45) : 0;
+                const stato = ritardo === 0 ? 'ontime' : (ritardo > 15 ? 'delayed' : 'ontime');
+                
+                // Calcola posizione intermedia
+                const progresso = Math.random() * 100;
+                const lat = stazioneOrigine.lat + (stazioneDestinazione.lat - stazioneOrigine.lat) * (progresso / 100);
+                const lon = stazioneOrigine.lon + (stazioneDestinazione.lon - stazioneOrigine.lon) * (progresso / 100);
+                
+                treni.push({
+                    id: `train_demo_${i}`,
+                    numero: `9${Math.floor(1000 + Math.random() * 9000)}`,
+                    categoria: tipo,
+                    origine: stazioneOrigine.nome,
+                    destinazione: stazioneDestinazione.nome,
+                    partenza: orarioInizio,
+                    arrivo: orarioFine,
+                    stimato: ritardo > 0 ? calcolaOrarioRitardato(orarioFine, ritardo) : orarioFine,
+                    stato: stato,
+                    ritardo: ritardo,
+                    binario: Math.floor(1 + Math.random() * 20),
+                    origineCodice: stazioneOrigine.codice,
+                    destinazioneCodice: stazioneDestinazione.codice,
+                    progresso: progresso,
+                    lat: lat,
+                    lon: lon
+                });
+            }
+            
+            return treni;
+        }
+        
+        function calcolaOrarioRitardato(orario, ritardoMinuti) {
+            const [ore, minuti] = orario.split(':').map(Number);
+            const totaleMinuti = ore * 60 + minuti + ritardoMinuti;
+            const nuoveOre = Math.floor(totaleMinuti / 60) % 24;
+            const nuoviMinuti = totaleMinuti % 60;
+            return `${String(nuoveOre).padStart(2, '0')}:${String(nuoviMinuti).padStart(2, '0')}`;
+        }
+        
+        function sommaOre(orario, oreDaAggiungere) {
+            const [ore, minuti] = orario.split(':').map(Number);
+            const totaleMinuti = ore * 60 + minuti + oreDaAggiungere * 60;
+            const nuoveOre = Math.floor(totaleMinuti / 60) % 24;
+            const nuoviMinuti = totaleMinuti % 60;
+            return `${String(nuoveOre).padStart(2, '0')}:${String(nuoviMinuti).padStart(2, '0')}`;
+        }
+        
+        // ============ FUNZIONI FILTRI ============
+        function filtraTreni(treni) {
+            let filtrati = [...treni];
+            
+            if (AppState.filtri.tipo !== 'all') {
+                const tipo = AppState.filtri.tipo.replace('type-', '');
+                if (tipo !== 'all') {
+                    filtrati = filtrati.filter(treno => 
+                        treno.categoria.toLowerCase().includes(tipo.toLowerCase())
+                    );
+                }
+            }
+            
+            if (AppState.filtri.stato !== 'all') {
+                const stato = AppState.filtri.stato.replace('status-', '');
+                if (stato !== 'all') {
+                    filtrati = filtrati.filter(treno => treno.stato === stato);
+                }
+            }
+            
+            return filtrati;
+        }
+        
+        // ============ FUNZIONI RENDER UI ============
+        function renderTreniList() {
+            const container = document.getElementById('train-board-content');
+            const treni = AppState.treniFiltrati;
+            
+            if (treni.length === 0) {
+                container.innerHTML = `
+                    <div style="padding: 40px; text-align: center; color: #666;">
+                        <div style="font-size: 48px; margin-bottom: 20px;">🚆</div>
+                        <div style="font-size: 16px; margin-bottom: 10px;">Nessun treno trovato</div>
+                        <div style="font-size: 14px;">Prova a cambiare stazione o filtri</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = treni.map((treno, index) => {
+                const tipoClass = `type-${treno.categoria.toLowerCase().replace(/ /g, '')}`;
+                const statoClass = `status-${treno.stato}`;
+                
+                return `
+                    <div class="board-row ${AppState.trenoSelezionato === treno.id ? 'selected' : ''}" 
+                         data-treno-id="${treno.id}"
+                         onclick="selezionaTreno('${treno.id}')">
+                        <div class="train-number">${treno.numero}</div>
+                        <div class="train-type ${tipoClass}">${treno.categoria}</div>
+                        <div>
+                            <div style="font-weight: 600;">${treno.origine} → ${treno.destinazione}</div>
+                            <div style="font-size: 12px; color: #666;">Binario ${treno.binario} • ${treno.mezzo ? 'Mezzo: ' + treno.mezzo : ''}</div>
+                        </div>
+                        <div>${treno.partenza}</div>
+                        <div>${treno.arrivo}</div>
+                        <div>${treno.stimato}</div>
+                        <div class="train-status ${statoClass}">
+                            ${treno.stato === 'ontime' ? 'In orario' : 
+                              treno.stato === 'delayed' ? `${treno.ritardo}' ritardo` : 
+                              'Cancellato'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function renderStazioniList() {
+            const container = document.getElementById('station-list');
+            const stazioni = AppState.stazioni;
+            
+            container.innerHTML = stazioni.map(stazione => {
+                const treniInStazione = AppState.treni.filter(t => 
+                    t.origineCodice === stazione.codice || 
+                    t.destinazioneCodice === stazione.codice
+                ).length;
+                
+                return `
+                    <div class="station-item ${AppState.stazioneSelezionata === stazione.codice ? 'active' : ''}" 
+                         onclick="selezionaStazione('${stazione.codice}')">
+                        <div class="station-info">
+                            <div class="station-code">${stazione.nome}</div>
+                            <div class="station-name">${stazione.regione} • Codice: ${stazione.codice}</div>
+                        </div>
+                        <div class="station-count">${treniInStazione}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('station-count').textContent = `${stazioni.length} stazioni`;
+        }
+        
+        function renderTurniMezziTable() {
+            const container = document.getElementById('turni-mezzi-table');
+            const mezzi = Object.keys(AppState.turniMezzi);
+            const giorni = ['LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB', 'DOM'];
+            
+            container.innerHTML = mezzi.map(mezzo => {
+                const colori = {
+                    'AVN001': 'var(--avn001)',
+                    'AVN002': 'var(--avn002)',
+                    'AVN003': 'var(--avn003)',
+                    'AVN004': 'var(--avn004)'
+                };
+                
+                return `
+                    <div style="display: grid; grid-template-columns: 100px repeat(7, 1fr); border-bottom: 1px solid #eee;">
+                        <div style="padding: 12px; background: ${colori[mezzo]}20; font-weight: 600; color: ${colori[mezzo]};">
+                            ${mezzo}
+                        </div>
+                        ${giorni.map(giorno => {
+                            const turno = AppState.turniMezzi[mezzo][giorno];
+                            return `
+                                <div style="padding: 12px; border-left: 1px solid #eee; font-size: 12px; line-height: 1.4;">
+                                    ${formattaTurnoPerVisualizzazione(turno)}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function formattaTurnoPerVisualizzazione(turno) {
+            if (!turno || turno === 'RIPOSO') {
+                return '<span style="color: #666; font-style: italic;">Riposo</span>';
+            }
+            
+            // Estrai parti del turno
+            const match = turno.match(/(\d{2}:\d{2})–(\d{2}:\d{2})\s+([A-Z0-9]+)→([A-Z0-9]+)/);
+            if (match) {
+                const [, inizio, fine, origine, destinazione] = match;
+                const origineNome = AppState.codiciStazioni[origine] || origine;
+                const destinazioneNome = AppState.codiciStazioni[destinazione] || destinazione;
+                
+                return `
+                    <div style="font-weight: 600;">${inizio}–${fine}</div>
+                    <div style="color: #666; font-size: 11px;">${origineNome} → ${destinazioneNome}</div>
+                `;
+            }
+            
+            return turno;
+        }
+        
+        function renderTimeline() {
+            const container = document.getElementById('timeline-container');
+            const treniAttivi = AppState.treni.filter(t => t.progresso > 0 && t.progresso < 100);
+            
+            if (treniAttivi.length === 0) {
+                container.innerHTML = `
+                    <div style="padding: 40px; text-align: center; color: #666;">
+                        Nessun treno attivo nella timeline
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = treniAttivi.map(treno => {
+                const coloreStato = treno.stato === 'ontime' ? '#4CAF50' : 
+                                  treno.stato === 'delayed' ? '#FF9800' : '#F44336';
+                
+                return `
+                    <div class="timeline-track">
+                        <div class="timeline-train" 
+                             style="left: ${treno.progresso}%; 
+                                    background: ${coloreStato}; 
+                                    width: ${Math.max(120, 200 * (treno.progresso / 100))}px;"
+                             onclick="selezionaTreno('${treno.id}')">
+                            <div>
+                                <div style="font-size: 11px;">${treno.numero} • ${treno.mezzo || ''}</div>
+                                <div style="font-size: 10px; opacity: 0.9;">${treno.origine} → ${treno.destinazione}</div>
+                            </div>
+                        </div>
+                        <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: #ddd;"></div>
+                        <div style="position: absolute; left: 25%; top: 0; bottom: 0; width: 1px; background: #ddd;"></div>
+                        <div style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #ddd;"></div>
+                        <div style="position: absolute; left: 75%; top: 0; bottom: 0; width: 1px; background: #ddd;"></div>
+                        <div style="position: absolute; left: 100%; top: 0; bottom: 0; width: 1px; background: #ddd;"></div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // ============ FUNZIONI MAPPA ============
+        function initMappa() {
+            AppState.mappa = L.map('live-map').setView([42.50, 12.50], 6);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18,
+            }).addTo(AppState.mappa);
+            
+            // Aggiungi marker per stazioni principali
+            AppState.stazioni.forEach(stazione => {
+                const marker = L.marker([stazione.lat, stazione.lon])
+                    .addTo(AppState.mappa)
+                    .bindPopup(`<b>${stazione.nome}</b><br>${stazione.regione}<br>Codice: ${stazione.codice}`);
+                
+                AppState.mapMarkers.push(marker);
+            });
+        }
+        
+        function aggiornaMappa() {
+            // Rimuovi marker treni precedenti
+            AppState.mapMarkers.forEach(marker => {
+                if (marker.options.isTrain) {
+                    AppState.mappa.removeLayer(marker);
+                }
+            });
+            
+            // Filtra solo marker stazioni
+            AppState.mapMarkers = AppState.mapMarkers.filter(marker => !marker.options.isTrain);
+            
+            // Aggiungi marker per treni
+            AppState.treni.forEach(treno => {
+                if (treno.lat && treno.lon) {
+                    const coloreStato = treno.stato === 'ontime' ? '#4CAF50' : 
+                                      treno.stato === 'delayed' ? '#FF9800' : '#F44336';
+                    
+                    const icon = L.divIcon({
+                        className: 'train-marker',
+                        html: `<div style="background: ${coloreStato}; 
+                               width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; 
+                               box-shadow: 0 2px 6px rgba(0,0,0,0.3); display: flex; align-items: center; 
+                               justify-content: center; color: white; font-size: 12px; font-weight: bold;">🚆</div>`,
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 12]
+                    });
+                    
+                    const marker = L.marker([treno.lat, treno.lon], { 
+                        icon: icon,
+                        isTrain: true 
+                    })
+                    .addTo(AppState.mappa)
+                    .bindPopup(`<b>Treno ${treno.numero}</b><br>
+                               ${treno.categoria}<br>
+                               ${treno.origine} → ${treno.destinazione}<br>
+                               Partenza: ${treno.partenza} • Arrivo: ${treno.arrivo}<br>
+                               Stato: ${treno.stato === 'ontime' ? 'In orario' : `${treno.ritardo}' ritardo`}<br>
+                               ${treno.mezzo ? `Mezzo: ${treno.mezzo}` : ''}`);
+                    
+                    AppState.mapMarkers.push(marker);
+                }
+            });
+            
+            // Aggiungi linee di percorso
+            aggiungiLineePercorso();
+        }
+        
+        function aggiungiLineePercorso() {
+            // Rimuovi linee precedenti
+            if (AppState.routeLines) {
+                AppState.routeLines.forEach(line => AppState.mappa.removeLayer(line));
+            }
+            
+            AppState.routeLines = [];
+            
+            // Aggiungi linee per i treni principali
+            AppState.treni.slice(0, 10).forEach(treno => {
+                const stazioneOrigine = AppState.stazioni.find(s => 
+                    s.nome.includes(treno.origineCodice) || s.codice.includes(treno.origineCodice.substring(0,3))
+                );
+                const stazioneDestinazione = AppState.stazioni.find(s => 
+                    s.nome.includes(treno.destinazioneCodice) || s.codice.includes(treno.destinazioneCodice.substring(0,3))
+                );
+                
+                if (stazioneOrigine && stazioneDestinazione) {
+                    const coloreLinea = treno.stato === 'ontime' ? '#4CAF50' : 
+                                     treno.stato === 'delayed' ? '#FF9800' : '#F44336';
+                    
+                    const polyline = L.polyline([
+                        [stazioneOrigine.lat, stazioneOrigine.lon],
+                        [treno.lat, treno.lon],
+                        [stazioneDestinazione.lat, stazioneDestinazione.lon]
+                    ], {
+                        color: coloreLinea,
+                        weight: 3,
+                        opacity: 0.7,
+                        dashArray: treno.progresso < 100 ? '10, 10' : null
+                    }).addTo(AppState.mappa);
+                    
+                    AppState.routeLines.push(polyline);
+                }
+            });
+        }
+        
+        // ============ FUNZIONI GRAFICI ============
+        function initCharts() {
+            // Grafico puntualità
+            const ctxPuntualita = document.getElementById('chart-puntualita').getContext('2d');
+            AppState.charts.puntualita = new Chart(ctxPuntualita, {
+                type: 'line',
+                data: {
+                    labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'],
+                    datasets: [{
+                        label: '% Puntualità',
+                        data: [95, 92, 88, 85, 90, 94],
+                        borderColor: '#4CAF50',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: { callback: value => value + '%' }
+                        }
+                    }
+                }
+            });
+            
+            // Grafico tipi treni
+            const ctxTipi = document.getElementById('chart-tipi').getContext('2d');
+            AppState.charts.tipi = new Chart(ctxTipi, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Frecciarossa', 'Frecciargento', 'Frecciabianca', 'InterCity', 'Regionale'],
+                    datasets: [{
+                        data: [25, 20, 15, 10, 30],
+                        backgroundColor: [
+                            '#d32f2f',
+                            '#757575',
+                            '#0288d1',
+                            '#388e3c',
+                            '#f57c00'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'right' }
+                    }
+                }
+            });
+            
+            // Grafico ritardi
+            const ctxRitardi = document.getElementById('chart-ritardi').getContext('2d');
+            AppState.charts.ritardi = new Chart(ctxRitardi, {
+                type: 'bar',
+                data: {
+                    labels: ['Roma-Milano', 'Milano-Napoli', 'Napoli-Roma', 'Bologna-Firenze', 'Torino-Venezia'],
+                    datasets: [{
+                        label: 'Ritardo medio (min)',
+                        data: [8, 12, 6, 4, 10],
+                        backgroundColor: '#FF9800'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+            
+            // Grafico utilizzo mezzi
+            const ctxMezzi = document.getElementById('chart-mezzi').getContext('2d');
+            AppState.charts.mezzi = new Chart(ctxMezzi, {
+                type: 'radar',
+                data: {
+                    labels: ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'],
+                    datasets: [
+                        {
+                            label: 'AVN001',
+                            data: [8, 8.5, 8.5, 8.5, 8.5, 6.5, 0],
+                            borderColor: '#1abc9c',
+                            backgroundColor: 'rgba(26, 188, 156, 0.2)'
+                        },
+                        {
+                            label: 'AVN002',
+                            data: [8.5, 8.5, 8.5, 8.5, 8.75, 0, 6],
+                            borderColor: '#9b59b6',
+                            backgroundColor: 'rgba(155, 89, 182, 0.2)'
+                        },
+                        {
+                            label: 'AVN003',
+                            data: [8.25, 8.5, 8.25, 8.5, 8.5, 7.5, 0],
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.2)'
+                        },
+                        {
+                            label: 'AVN004',
+                            data: [8.5, 8.5, 8.5, 8.5, 8.5, 6.5, 6],
+                            borderColor: '#e74c3c',
+                            backgroundColor: 'rgba(231, 76, 60, 0.2)'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 10
+                        }
+                    }
+                }
+            });
+            
+            // Grafico turni
+            const ctxTurni = document.getElementById('chart-turni').getContext('2d');
+            AppState.charts.turni = new Chart(ctxTurni, {
+                type: 'bar',
+                data: {
+                    labels: ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'],
+                    datasets: [
+                        {
+                            label: 'AVN001',
+                            data: [8, 8.5, 8.5, 8.5, 8.5, 6.5, 0],
+                            backgroundColor: '#1abc9c'
+                        },
+                        {
+                            label: 'AVN002',
+                            data: [8.5, 8.5, 8.5, 8.5, 8.75, 0, 6],
+                            backgroundColor: '#9b59b6'
+                        },
+                        {
+                            label: 'AVN003',
+                            data: [8.25, 8.5, 8.25, 8.5, 8.5, 7.5, 0],
+                            backgroundColor: '#3498db'
+                        },
+                        {
+                            label: 'AVN004',
+                            data: [8.5, 8.5, 8.5, 8.5, 8.5, 6.5, 6],
+                            backgroundColor: '#e74c3c'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: { stacked: true },
+                        y: { 
+                            stacked: true,
+                            beginAtZero: true,
+                            max: 35
+                        }
+                    }
+                }
+            });
+        }
+        
+        function aggiornaGrafici() {
+            // Aggiorna dati grafici basati sui treni attuali
+            const treni = AppState.treni;
+            
+            // Calcola statistiche
+            const totaliPerTipo = {
+                'Frecciarossa': treni.filter(t => t.categoria === 'Frecciarossa').length,
+                'Frecciargento': treni.filter(t => t.categoria === 'Frecciargento').length,
+                'Frecciabianca': treni.filter(t => t.categoria === 'Frecciabianca').length,
+                'InterCity': treni.filter(t => t.categoria === 'InterCity').length,
+                'Regionale': treni.filter(t => t.categoria === 'Regionale').length
+            };
+            
+            // Aggiorna grafico tipi
+            AppState.charts.tipi.data.datasets[0].data = [
+                totaliPerTipo['Frecciarossa'],
+                totaliPerTipo['Frecciargento'],
+                totaliPerTipo['Frecciabianca'],
+                totaliPerTipo['InterCity'],
+                totaliPerTipo['Regionale']
+            ];
+            AppState.charts.tipi.update();
+        }
+        
+        // ============ FUNZIONI STATISTICHE ============
+        function updateStats() {
+            const treni = AppState.treni;
+            
+            AppState.stats.treniTotali = treni.length;
+            AppState.stats.treniInOrario = treni.filter(t => t.stato === 'ontime').length;
+            AppState.stats.treniInRitardo = treni.filter(t => t.stato === 'delayed').length;
+            AppState.stats.treniCancellati = treni.filter(t => t.stato === 'cancelled').length;
+            
+            // Aggiorna UI
+            document.getElementById('stat-total').textContent = AppState.stats.treniTotali;
+            document.getElementById('stat-ontime').textContent = AppState.stats.treniInOrario;
+            document.getElementById('stat-delayed').textContent = AppState.stats.treniInRitardo;
+            document.getElementById('stat-cancelled').textContent = AppState.stats.treniCancellati;
+            
+            document.getElementById('footer-total').textContent = AppState.stats.treniTotali;
+            document.getElementById('footer-personale').textContent = AppState.stats.personaleTotale;
+            document.getElementById('footer-sedi').textContent = AppState.stats.sediAttive;
+            document.getElementById('footer-turni').textContent = AppState.stats.turniAttivi;
+            
+            document.getElementById('train-count').textContent = `${AppState.treniFiltrati.length} treni`;
+        }
+        
+        // ============ FUNZIONI UTILITY ============
+        function selezionaTreno(trenoId) {
+            AppState.trenoSelezionato = trenoId;
+            renderTreniList();
+            
+            // Centra mappa sul treno
+            const treno = AppState.treni.find(t => t.id === trenoId);
+            if (treno && treno.lat && treno.lon) {
+                AppState.mappa.setView([treno.lat, treno.lon], 8);
+            }
+        }
+        
+        function selezionaStazione(stazioneCodice) {
+            AppState.stazioneSelezionata = stazioneCodice;
+            renderStazioniList();
+            
+            // Filtra treni per stazione
+            const treniStazione = AppState.treni.filter(t => 
+                t.origineCodice === stazioneCodice || t.destinazioneCodice === stazioneCodice
+            );
+            
+            if (treniStazione.length > 0) {
+                AppState.treniFiltrati = treniStazione;
+                renderTreniList();
+            }
+            
+            // Centra mappa sulla stazione
+            const stazione = AppState.stazioni.find(s => s.codice === stazioneCodice);
+            if (stazione) {
+                AppState.mappa.setView([stazione.lat, stazione.lon], 10);
+            }
+        }
+        
+        function updateDateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = 
+                now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById('current-date').textContent = 
+                now.toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            
+            // Aggiorna timeline time
+            const oreCorrente = now.getHours();
+            document.getElementById('timeline-time').textContent = 
+                `${String(oreCorrente - 2).padStart(2, '0')}:00 - ${String(oreCorrente + 2).padStart(2, '0')}:00`;
+        }
+        
+        function updateAPIStatus(connected) {
+            const apiDot = document.getElementById('api-status-dot');
+            const apiText = document.getElementById('api-status-text');
+            
+            if (connected) {
+                apiDot.className = 'status-dot online';
+                apiText.textContent = 'API Connesse';
+            } else {
+                apiDot.className = 'status-dot offline';
+                apiText.textContent = 'API Offline';
+            }
+        }
+        
+        function showNotification(title, message, type = 'success') {
+            const notification = document.getElementById('notification');
+            const notifTitle = document.getElementById('notification-title');
+            const notifMessage = document.getElementById('notification-message');
+            const notifIcon = notification.querySelector('.notification-icon');
+            
+            notifTitle.textContent = title;
+            notifMessage.textContent = message;
+            
+            notification.className = 'notification';
+            notification.classList.add(type);
+            
+            if (type === 'success') {
+                notifIcon.textContent = '✓';
+            } else if (type === 'error') {
+                notifIcon.textContent = '✗';
+            } else {
+                notifIcon.textContent = '⚠';
+            }
+            
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 5000);
+        }
+        
+        function showLoading(containerId, show) {
+            const container = document.getElementById(containerId);
+            if (show) {
+                container.innerHTML = `
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <div>Caricamento...</div>
+                    </div>
+                `;
+            }
+        }
+        
+        // ============ GESTIONE FILE IMPORT ============
+        function initFileUpload() {
+            const dropArea = document.getElementById('drop-area');
+            const fileInput = document.getElementById('file-input');
+            const btnSelectFile = document.getElementById('btn-select-file');
+            const btnRemoveFile = document.getElementById('btn-remove-file');
+            const btnImportData = document.getElementById('btn-import-data');
+            
+            btnSelectFile.addEventListener('click', () => fileInput.click());
+            dropArea.addEventListener('click', () => fileInput.click());
+            
+            // Drag & drop
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight() {
+                dropArea.classList.add('dragover');
+            }
+            
+            function unhighlight() {
+                dropArea.classList.remove('dragover');
+            }
+            
+            dropArea.addEventListener('drop', handleDrop, false);
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                handleFiles(files);
+            }
+            
+            fileInput.addEventListener('change', function(e) {
+                handleFiles(this.files);
+            });
+            
+            btnRemoveFile.addEventListener('click', () => {
+                clearFileImport();
+            });
+            
+            btnImportData.addEventListener('click', importTurniFromFile);
+        }
+        
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            
+            const file = files[0];
+            const fileName = file.name;
+            const fileSize = (file.size / 1024).toFixed(2) + ' KB';
+            
+            document.getElementById('file-name').textContent = fileName;
+            document.getElementById('file-size').textContent = fileSize;
+            document.getElementById('file-info').style.display = 'block';
+            
+            readFile(file);
+        }
+        
+        function readFile(file) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    let data;
+                    const fileExtension = file.name.split('.').pop().toLowerCase();
+                    
+                    if (fileExtension === 'csv') {
+                        data = parseCSV(e.target.result);
+                    } else {
+                        data = parseExcel(e.target.result);
+                    }
+                    
+                    AppState.fileImportData = data;
+                    showDataPreview(data);
+                    document.getElementById('btn-import-data').disabled = false;
+                    
+                } catch (error) {
+                    console.error('Errore lettura file:', error);
+                    showNotification('Errore lettura file', error.message, 'error');
+                }
+            };
+            
+            if (file.name.endsWith('.csv')) {
+                reader.readAsText(file);
+            } else {
+                reader.readAsArrayBuffer(file);
+            }
+        }
+        
+        function parseCSV(csvText) {
+            const lines = csvText.split('\n').map(line => line.trim()).filter(line => line);
+            const headers = lines[0].split(',').map(h => h.trim());
+            const result = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                const currentLine = lines[i].split(',').map(cell => cell.trim());
+                const obj = {};
+                
+                headers.forEach((header, index) => {
+                    obj[header] = currentLine[index] || '';
+                });
+                
+                result.push(obj);
+            }
+            
+            return result;
+        }
+        
+        function parseExcel(arrayBuffer) {
+            const data = new Uint8Array(arrayBuffer);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+            return jsonData;
+        }
+        
+        function showDataPreview(data) {
+            const previewBody = document.getElementById('preview-body');
+            previewBody.innerHTML = '';
+            
+            const previewData = data.slice(0, 3);
+            
+            previewData.forEach(row => {
+                const tr = document.createElement('tr');
+                
+                tr.innerHTML = `
+                    <td style="padding: 8px; border-bottom: 1px solid #dee2e6;">${row.Mezzo || row.mezzo || ''}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #dee2e6;">${row.Lunedì || row.lunedì || row.LUN || ''}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #dee2e6;">${row.Martedì || row.martedì || row.MAR || ''}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #dee2e6;">${row.Mercoledì || row.mercoledì || row.MER || ''}</td>
+                `;
+                
+                previewBody.appendChild(tr);
+            });
+            
+            document.getElementById('preview-count').textContent = `${data.length} righe trovate`;
+        }
+        
+        function clearFileImport() {
+            document.getElementById('file-info').style.display = 'none';
+            document.getElementById('btn-import-data').disabled = true;
+            document.getElementById('file-input').value = '';
+            AppState.fileImportData = null;
+            document.getElementById('preview-body').innerHTML = '';
+            document.getElementById('preview-count').textContent = '0 righe trovate';
+        }
+        
+        async function importTurniFromFile() {
+            if (!AppState.fileImportData || AppState.fileImportData.length === 0) {
+                showNotification('Nessun dato', 'Non ci sono dati da importare', 'warning');
+                return;
+            }
+            
+            try {
+                // Processa i dati importati
+                AppState.fileImportData.forEach(row => {
+                    const mezzo = row.Mezzo || row.mezzo;
+                    if (mezzo && AppState.turniMezzi[mezzo]) {
+                        // Aggiorna i turni del mezzo
+                        const giorni = ['LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB', 'DOM'];
+                        giorni.forEach(giorno => {
+                            const turno = row[giorno] || row[giorno.toLowerCase()];
+                            if (turno) {
+                                AppState.turniMezzi[mezzo][giorno] = turno;
+                            }
+                        });
+                    }
+                });
+                
+                // Aggiorna UI
+                renderTurniMezziTable();
+                aggiornaGrafici();
+                
+                showNotification('Import completato', 'Turni mezzi aggiornati con successo', 'success');
+                
+                // Ricarica treni con nuovi turni
+                setTimeout(() => caricaTreniDemo(), 1000);
+                
+                // Chiudi modal
+                chiudiModal('import-turni');
+                clearFileImport();
+                
+            } catch (error) {
+                console.error('Errore import:', error);
+                showNotification('Errore import', error.message, 'error');
+            }
+        }
+        
+        function caricaTemplateTurni() {
+            const template = `Mezzo,Lunedì,Martedì,Mercoledì,Giovedì,Venerdì,Sabato,Domenica
+AVN001,05:35–13:30 NACL→89162,06:50–15:20 RMTM→89162,08:00–16:30 FISM→BOAV,10:15–18:45 MIRO→89162,05:35–14:10 NACL→89162,07:30–14:00 RMTM→9505,RIPOSO
+AVN002,07:00–15:30 RMTM→9601,08:20–17:00 BOAV→FISM,10:30–19:00 MIRO→TCFN,06:00–14:30 NACL→9601,07:00–15:45 RMTM→9601,RIPOSO,07:00–13:00 89162
+AVN003,08:30–16:45 BOAV→MIRO,09:45–18:15 MIRO→9601,05:35–13:45 NACL→89162,07:30–16:00 RMTM→89162,08:30–17:00 FISM→BOAV,06:00–13:30 NACL→89162,RIPOSO
+AVN004,10:00–18:30 FISM→9505,05:40–14:00 NACL→TAS,07:10–15:40 RMTM→9505,08:45–17:15 BOAV→FISM,09:30–18:00 MIRO→1508,09:00–15:30 BOAV→9601,08:00–14:00 9505`;
+            
+            const blob = new Blob([template], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'template_turni_mezzi.csv';
+            a.click();
+            
+            showNotification('Template scaricato', 'Template CSV pronto per la compilazione', 'success');
+        }
+        
+        function esportaProgrammazione() {
+            const dataStr = JSON.stringify(AppState.turniMezzi, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            const exportFileDefaultName = `programmazione_mezzi_${new Date().toISOString().split('T')[0]}.json`;
+            
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportFileDefaultName);
+            linkElement.click();
+            
+            showNotification('Esportazione completata', 'Programmazione mezzi esportata in JSON', 'success');
+        }
+        
+        // ============ GESTIONE TABS ============
+        function initTabs() {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabId = this.getAttribute('data-tab');
+                    
+                    // Aggiorna tab attivo
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Mostra contenuto tab
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.remove('active');
+                    });
+                    document.getElementById(`${tabId}-tab`).classList.add('active');
+                    
+                    AppState.currentTab = tabId;
+                    
+                    // Aggiorna contenuto specifico del tab
+                    if (tabId === 'mappa') {
+                        setTimeout(() => AppState.mappa.invalidateSize(), 100);
+                        renderTimeline();
+                    } else if (tabId === 'grafici') {
+                        aggiornaGrafici();
+                    }
+                });
+            });
+        }
+        
+        // ============ GESTIONE MODAL ============
+        function initModal() {
+            document.querySelectorAll('.close-modal').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const modalId = this.getAttribute('data-modal');
+                    chiudiModal(modalId);
+                });
+            });
+            
+            document.querySelectorAll('.modal').forEach(modal => {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === this) {
+                        const modalId = this.id.replace('modal-', '');
+                        chiudiModal(modalId);
+                    }
+                });
+            });
+            
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    document.querySelectorAll('.modal').forEach(modal => {
+                        if (modal.style.display === 'flex') {
+                            const modalId = modal.id.replace('modal-', '');
+                            chiudiModal(modalId);
+                        }
+                    });
+                }
+            });
+        }
+        
+        function apriModal(modalId) {
+            const modal = document.getElementById(`modal-${modalId}`);
+            if (modal) {
+                modal.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+            }
+        }
+        
+        function chiudiModal(modalId) {
+            const modal = document.getElementById(`modal-${modalId}`);
+            if (modal) {
+                modal.style.display = 'none';
+                document.body.style.overflow = 'auto';
+            }
+        }
+        
+        // ============ AUTO-REFRESH ============
+        function startAutoRefresh() {
+            AppState.autoRefreshInterval = setInterval(() => {
+                if (AppState.currentTab === 'monitor' || AppState.currentTab === 'mappa') {
+                    caricaTreniDemo();
+                }
+            }, 30000); // Ogni 30 secondi
+        }
+        
+        // ============ EVENT LISTENERS ============
+        function initUI() {
+            // Tabs
+            initTabs();
+            
+            // Modali
+            initModal();
+            
+            // File upload
+            initFileUpload();
+            
+            // Pulsanti principali
+            document.getElementById('refresh-btn').addEventListener('click', () => caricaTreniDemo());
+            
+            document.getElementById('btn-show-all').addEventListener('click', () => {
+                AppState.filtri.tipo = 'all';
+                AppState.filtri.stato = 'all';
+                AppState.treniFiltrati = AppState.treni;
+                renderTreniList();
+                document.getElementById('train-count').textContent = `${AppState.treniFiltrati.length} treni`;
+                
+                document.querySelectorAll('.filter-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.querySelector('[data-filter="type-all"]').classList.add('active');
+                document.querySelector('[data-filter="status-all"]').classList.add('active');
+            });
+            
+            document.getElementById('btn-export').addEventListener('click', () => {
+                const dataStr = JSON.stringify(AppState.treni, null, 2);
+                const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+                const exportFileDefaultName = `monitoraggio_treni_${new Date().toISOString().split('T')[0]}.json`;
+                
+                const linkElement = document.createElement('a');
+                linkElement.setAttribute('href', dataUri);
+                linkElement.setAttribute('download', exportFileDefaultName);
+                linkElement.click();
+                
+                showNotification('Esportazione completata', 'Dati treni esportati in JSON', 'success');
+            });
+            
+            document.getElementById('btn-import-turni').addEventListener('click', () => {
+                apriModal('import-turni');
+            });
+            
+            document.getElementById('btn-import-turni-csv').addEventListener('click', () => {
+                apriModal('import-turni');
+            });
+            
+            document.getElementById('btn-carica-template').addEventListener('click', caricaTemplateTurni);
+            document.getElementById('btn-esporta-turni').addEventListener('click', esportaProgrammazione);
+            
+            // Filtri treni
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const filter = this.getAttribute('data-filter');
+                    
+                    if (filter.startsWith('type-')) {
+                        document.querySelectorAll('.filter-btn[data-filter^="type-"]').forEach(b => b.classList.remove('active'));
+                        this.classList.add('active');
+                        AppState.filtri.tipo = filter;
+                    } else if (filter.startsWith('status-')) {
+                        document.querySelectorAll('.filter-btn[data-filter^="status-"]').forEach(b => b.classList.remove('active'));
+                        this.classList.add('active');
+                        AppState.filtri.stato = filter;
+                    }
+                    
+                    AppState.treniFiltrati = filtraTreni(AppState.treni);
+                    renderTreniList();
+                    document.getElementById('train-count').textContent = `${AppState.treniFiltrati.length} treni`;
+                });
+            });
+            
+            // Ricerca stazioni
+            document.getElementById('station-search').addEventListener('input', function(e) {
+                const searchTerm = e.target.value.toLowerCase();
+                const stazioni = document.querySelectorAll('.station-item');
+                
+                stazioni.forEach(stazione => {
+                    const nome = stazione.querySelector('.station-code').textContent.toLowerCase();
+                    const info = stazione.querySelector('.station-name').textContent.toLowerCase();
+                    
+                    if (nome.includes(searchTerm) || info.includes(searchTerm)) {
+                        stazione.style.display = 'flex';
+                    } else {
+                        stazione.style.display = 'none';
+                    }
+                });
+            });
+        }
+        
+        // ============ INIZIALIZZAZIONE ============
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
